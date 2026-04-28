@@ -40,10 +40,9 @@ export class AiGatewayController {
 
   @Post('chat/stream')
   @HttpCode(HttpStatus.OK)
-  @Header('Content-Type', 'text/event-stream')
-  @Header('Cache-Control', 'no-cache')
-  @Header('Connection', 'keep-alive')
-  @Header('X-Accel-Buffering', 'no') // Disable nginx buffering
+  // NOTE: @Header() decorators are NOT used here because @Res() puts NestJS
+  // into library-specific mode which disables all @Header(), @HttpCode(), etc.
+  // Headers are set manually via res.setHeader() inside the handler.
   @ApiOperation({ summary: 'Chat with AI (streaming SSE)' })
   @ApiProduces('text/event-stream')
   @ApiResponse({ status: 200, description: 'SSE stream of AI tokens' })

@@ -40,7 +40,7 @@ export interface OpenRouterRequest {
 }
 
 /** OpenAI-compatible tool definition */
-export interface OpenRouterToolDef {
+export interface OpenRouterFunctionToolDef {
   type: 'function';
   function: {
     name: string;
@@ -48,6 +48,14 @@ export interface OpenRouterToolDef {
     parameters?: object;
   };
 }
+
+/** OpenRouter server tool definition (e.g., web_search) */
+export interface OpenRouterServerToolDef {
+  type: `openrouter:${string}`;
+}
+
+/** Combined tool definition — supports both function tools and server tools */
+export type OpenRouterToolDef = OpenRouterFunctionToolDef | OpenRouterServerToolDef;
 
 export interface OpenRouterResponse {
   id: string;
@@ -113,10 +121,14 @@ export class OpenRouterClient {
   private readonly baseUrl = 'https://openrouter.ai/api/v1';
   private readonly apiKey: string;
   private readonly timeoutMs: number;
+  private readonly appUrl: string;
+  private readonly appTitle: string;
 
   constructor(private readonly config: ConfigService) {
     this.apiKey = this.config.get<string>('openRouter.apiKey', '');
     this.timeoutMs = this.config.get<number>('openRouter.timeoutMs', 30000);
+    this.appUrl = this.config.get<string>('openRouter.appUrl', 'https://arisa.app');
+    this.appTitle = this.config.get<string>('openRouter.appTitle', 'ARISA Smart Agriculture');
   }
 
   /**
@@ -255,8 +267,8 @@ export class OpenRouterClient {
         headers: {
           Authorization: `Bearer ${this.apiKey}`,
           'Content-Type': 'application/json',
-          'HTTP-Referer': 'https://arisa.app',
-          'X-OpenRouter-Title': 'ARISA Smart Agriculture',
+          'HTTP-Referer': this.appUrl,
+          'X-OpenRouter-Title': this.appTitle,
         },
         body: JSON.stringify(body),
         signal,

@@ -65,18 +65,20 @@ export class HealthController {
       checks.supabase = { status: 'error', error: e.message };
     }
 
+    // Only database is a hard dependency — Redis is optional (in-memory fallback)
+    const criticalOk = checks.database?.status === 'ok';
     const allOk = Object.values(checks).every(
-      (c: any) => c.status === 'ok',
+      (c: any) => c.status === 'ok' || c.status === 'not_configured',
     );
 
     const result = {
       __raw: true, // Skip transform interceptor wrapping
-      status: allOk ? 'ok' : 'degraded',
+      status: criticalOk ? (allOk ? 'ok' : 'degraded') : 'unhealthy',
       checks,
       timestamp: new Date().toISOString(),
     };
 
-    if (!allOk) {
+    if (!criticalOk) {
       throw new ServiceUnavailableException(result);
     }
 

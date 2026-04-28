@@ -5,6 +5,7 @@ import {
   Logger,
   InternalServerErrorException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SupabaseService } from '../../supabase/supabase.service';
 import { RegisterDto, LoginDto, OAuthGoogleDto, RefreshTokenDto } from './dto';
@@ -17,6 +18,7 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly supabase: SupabaseService,
+    private readonly config: ConfigService,
   ) {}
 
   /**
@@ -224,16 +226,27 @@ export class AuthService {
 
   /**
    * Logout — invalidate current session.
+   *
+   * NOTE: Supabase JS v2 does NOT have auth.admin.signOut().
+   * We use the standard auth.signOut() which works with the user's JWT.
    */
   async logout(accessToken: string) {
-    // Use admin client to revoke the specific session
-    const { error } = await this.supabase
-      .getAdminClient()
-      .auth.admin.signOut(accessToken, 'local');
+    try {
+      // Use config to get Supabase credentials (SupabaseClient properties are protected)
+      const { createClient } = await import('@supabase/supabase-js');
+      const supabaseUrl = this.config.get<string>('supabase.url', '');
+      const supabaseAnonKey = this.config.get<string>('supabase.anonKey', '');
 
-    if (error) {
-      this.logger.warn(`Logout failed: ${error.message}`);
-      // Don't throw — logout should be best-effort
+      const userClient = createClient(supabaseUrl, supabaseAnonKey, {
+        global: { headers: { Authorization: `Bearer ${accessToken}` } },
+      });
+      const { error } = await userClient.auth.signOut({ scope: 'local' });
+      if (error) {
+        this.logger.warn(`Logout failed: ${error.message}`);
+      }
+    } catch (error) {
+      // Best-effort — don't crash on logout failure
+      this.logger.warn(`Logout error: ${(error as Error).message}`);
     }
 
     return { message: 'Logged out successfully' };
@@ -241,6 +254,9 @@ export class AuthService {
 
   /**
    * Revoke all sessions for the current user.
+   *
+   * Uses Supabase Auth Admin REST API directly since
+   * supabase-js v2 does not expose admin.signOut().
    */
   async revokeAll(userId: string) {
     const user = await this.prisma.user.findUnique({
@@ -251,13 +267,28 @@ export class AuthService {
       throw new UnauthorizedException(ErrorCode.AUTH_USER_NOT_FOUND);
     }
 
-    // Use admin client to sign out user globally
-    const { error } = await this.supabase
-      .getAdminClient()
-      .auth.admin.signOut(user.supabaseId, 'global');
+    try {
+      // Use config to get credentials (protected properties can't be accessed)
+      const supabaseUrl = this.config.get<string>('supabase.url', '');
+      const serviceKey = this.config.get<string>('supabase.serviceRoleKey', '');
 
-    if (error) {
-      this.logger.warn(`Revoke all failed: ${error.message}`);
+      const response = await fetch(
+        `${supabaseUrl}/auth/v1/admin/users/${user.supabaseId}/factors`,
+        {
+          method: 'DELETE',
+          headers: {
+            apikey: serviceKey,
+            Authorization: `Bearer ${serviceKey}`,
+            'Content-Type': 'application/json',
+          },
+        },
+      );
+
+      if (!response.ok) {
+        this.logger.warn(`Revoke all failed: HTTP ${response.status}`);
+      }
+    } catch (error) {
+      this.logger.warn(`Revoke all error: ${(error as Error).message}`);
     }
 
     this.logger.log(`All sessions revoked for user: ${userId}`);

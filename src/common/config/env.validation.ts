@@ -22,7 +22,7 @@ export const envValidationSchema = Joi.object({
   REDIS_PASSWORD: Joi.string().allow('').default(''),
 
   // Device Security
-  DEVICE_REGISTRATION_SECRET: Joi.string().required(),
+  DEVICE_REGISTRATION_SECRET: Joi.string().required().min(20),
   DEVICE_TOKEN_SALT_ROUNDS: Joi.number().default(12),
 
   // Pairing
@@ -35,8 +35,8 @@ export const envValidationSchema = Joi.object({
   // OpenRouter AI
   OPENROUTER_API_KEY: Joi.string().required(),
   OPENROUTER_DEFAULT_MODEL: Joi.string().default('google/gemini-2.5-flash'),
-  OPENROUTER_FALLBACK_MODEL: Joi.string().default('anthropic/claude-3.5-haiku'),
-  OPENROUTER_MAX_TOKENS: Joi.number().default(4096),
+  OPENROUTER_FALLBACK_MODEL: Joi.string().default('anthropic/claude-haiku-4.5'),
+  OPENROUTER_MAX_TOKENS: Joi.number().default(8192),
   OPENROUTER_TIMEOUT_MS: Joi.number().default(30000),
   AI_USER_RATE_LIMIT_PER_MINUTE: Joi.number().default(10),
   AI_USER_RATE_LIMIT_PER_HOUR: Joi.number().default(100),

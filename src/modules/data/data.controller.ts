@@ -4,6 +4,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { DataService } from './data.service';
+import { CreateDataDto, UpdateDataDto } from './dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
@@ -19,9 +20,9 @@ export class DataController {
   @ApiOperation({ summary: 'Create a new data record' })
   async create(
     @CurrentUser('id') userId: string,
-    @Body() body: { dataType: string; dataJson: any; deviceId?: string },
+    @Body() dto: CreateDataDto,
   ) {
-    return this.dataService.create(userId, body);
+    return this.dataService.create(userId, dto);
   }
 
   @Get()
@@ -53,9 +54,9 @@ export class DataController {
   async update(
     @Param('id') id: string,
     @CurrentUser('id') userId: string,
-    @Body() body: { dataJson?: any; dataType?: string },
+    @Body() dto: UpdateDataDto,
   ) {
-    return this.dataService.update(id, userId, body);
+    return this.dataService.update(id, userId, dto);
   }
 
   @Delete(':id')

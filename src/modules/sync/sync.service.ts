@@ -68,13 +68,21 @@ export class SyncService {
       throw new BadRequestException(ErrorCode.SYNC_BATCH_TOO_LARGE);
     }
 
-    const results: any[] = [];
+    // B9: Process items in parallel using Promise.allSettled
+    const settledResults = await Promise.allSettled(
+      dto.items.map((item) => this.push(item, deviceId)),
+    );
+
     let accepted = 0;
     let skipped = 0;
+    const results: any[] = [];
 
-    for (const item of dto.items) {
-      try {
-        const result = await this.push(item, deviceId);
+    for (let i = 0; i < settledResults.length; i++) {
+      const settled = settledResults[i];
+      const item = dto.items[i];
+
+      if (settled.status === 'fulfilled') {
+        const result = settled.value;
         results.push({
           requestId: item.requestId,
           jobId: result.jobId,
@@ -82,11 +90,11 @@ export class SyncService {
         });
         if (result.duplicate) skipped++;
         else accepted++;
-      } catch (error) {
+      } else {
         results.push({
           requestId: item.requestId,
           status: 'FAILED',
-          error: error.message,
+          error: settled.reason?.message || 'Unknown error',
         });
       }
     }
@@ -195,8 +203,11 @@ export class SyncService {
       });
 
       if (existing) {
-        // LWW conflict resolution: keep cloud version if newer
-        if (existing.version >= (job.payloadRaw as any)?.version || 1) {
+        // LWW conflict resolution: compare versions properly
+        // The version from SyncPushDto is stored as metadata in the job
+        const incomingVersion = (job.payloadRaw as any)?.version ?? 1;
+
+        if (existing.version >= incomingVersion) {
           // Cloud wins — skip
           await this.prisma.syncJob.update({
             where: { id: jobId },
@@ -213,19 +224,20 @@ export class SyncService {
           where: { id: existing.id },
           data: {
             dataJson: job.payloadRaw as any,
-            version: (job.payloadRaw as any)?.version || 1,
+            version: incomingVersion,
             source: 'edge',
           },
         });
       } else {
         // No conflict — create new record
+        const incomingVersion = (job.payloadRaw as any)?.version ?? 1;
         await this.prisma.coreData.create({
           data: {
             userId: job.userId,
             deviceId: job.deviceId,
             dataType: job.payloadType,
             dataJson: job.payloadRaw as any,
-            version: (job.payloadRaw as any)?.version || 1,
+            version: incomingVersion,
             source: 'edge',
             eventId: job.requestId,
           },

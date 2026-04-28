@@ -76,7 +76,10 @@ export class SyncController {
   async pull(
     @Query('since') since: string,
     @Query('limit') limit?: number,
+    @CurrentDevice('ownerIds') ownerIds?: string[],
   ) {
-    return this.syncService.pull(since, limit ? Number(limit) : 50);
+    // B4: Filter by device's owner(s) to prevent cross-user data leaks
+    const userId = ownerIds?.[0]; // Primary owner
+    return this.syncService.pull(since, limit ? Number(limit) : 50, userId);
   }
 }

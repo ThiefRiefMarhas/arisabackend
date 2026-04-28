@@ -45,13 +45,18 @@ export class TransformInterceptor<T>
           return data;
         }
 
-        // Extract pagination if present
+        // Extract pagination if present, but preserve all other fields
         let responseData = data;
         let pagination: ApiResponse<T>['meta']['pagination'] | undefined;
 
         if (data && data.pagination) {
           pagination = data.pagination;
-          responseData = data.data;
+          // Preserve all fields except 'pagination' itself
+          const { pagination: _, data: innerData, ...extraFields } = data;
+          // If response has a 'data' key, use it; otherwise use all remaining fields
+          responseData = innerData !== undefined
+            ? (Object.keys(extraFields).length > 0 ? { ...extraFields, data: innerData } : innerData)
+            : extraFields;
         }
 
         return {

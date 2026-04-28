@@ -7,10 +7,14 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
+import { ERROR_MESSAGES } from '../constants/error-messages';
+import { ErrorCode } from '../constants/error-codes';
 
 /**
  * Global exception filter that formats ALL errors into a consistent response shape.
  * See docs/01-ARCHITECTURE.md — Error Response format.
+ *
+ * Includes user-friendly messages in Bahasa Indonesia for farmer-facing apps.
  */
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
@@ -50,11 +54,17 @@ export class HttpExceptionFilter implements ExceptionFilter {
       );
     }
 
+    // Look up user-friendly Indonesian message for the error code
+    const userMessage = ERROR_MESSAGES[errorCode as ErrorCode]
+      || ERROR_MESSAGES[this.statusToErrorCode(statusCode) as ErrorCode]
+      || 'Terjadi kesalahan. Coba lagi nanti.';
+
     const errorResponse = {
       success: false,
       error: {
         code: errorCode,
-        message,
+        message,               // Technical message (for debugging / dev)
+        userMessage,           // Bahasa Indonesia (for display to farmers)
         statusCode,
       },
       meta: {

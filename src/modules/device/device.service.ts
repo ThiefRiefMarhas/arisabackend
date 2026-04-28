@@ -90,6 +90,11 @@ export class DeviceService {
       throw new NotFoundException(ErrorCode.DEVICE_NOT_FOUND);
     }
 
+    // B3: Prevent pairing on disabled/decommissioned devices
+    if (device.status !== 'ACTIVE') {
+      throw new ForbiddenException(ErrorCode.DEVICE_DISABLED);
+    }
+
     // Generate 6-char alphanumeric code
     const pairingCode = this.generatePairingCode();
     const expiryMinutes = this.config.get<number>(
@@ -282,19 +287,26 @@ export class DeviceService {
       throw new NotFoundException(ErrorCode.DEVICE_NOT_FOUND);
     }
 
-    await this.prisma.$transaction([
-      this.prisma.userDevice.update({
-        where: { id: userDevice.id },
-        data: { revokedAt: new Date() },
-      }),
-      // Check if device has remaining owners
-      this.prisma.device.update({
+    // Revoke this user's ownership link
+    await this.prisma.userDevice.update({
+      where: { id: userDevice.id },
+      data: { revokedAt: new Date() },
+    });
+
+    // B2: Check if device has remaining active owners before setting REVOKED
+    const remainingOwners = await this.prisma.userDevice.count({
+      where: { deviceId, revokedAt: null },
+    });
+
+    if (remainingOwners === 0) {
+      // No more owners — mark device as revoked
+      await this.prisma.device.update({
         where: { id: deviceId },
         data: { pairingStatus: 'REVOKED' },
-      }),
-    ]);
+      });
+    }
 
-    this.logger.log(`Device ${deviceId} revoked from user ${userId}`);
+    this.logger.log(`Device ${deviceId} revoked from user ${userId} (remaining owners: ${remainingOwners})`);
 
     return { message: 'Device revoked' };
   }

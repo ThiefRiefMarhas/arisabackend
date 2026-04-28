@@ -28,6 +28,7 @@ const MODEL_MAP: Record<string, string> = {
   'claude-haiku': 'anthropic/claude-haiku-4.5',
 };
 
+/** Approximate USD per 1M tokens — for display only. Actual billing is handled by OpenRouter. */
 const AVAILABLE_MODELS = [
   {
     alias: 'gemini-flash',
@@ -53,13 +54,13 @@ const AVAILABLE_MODELS = [
   },
 ];
 
-/** OpenRouter web search server tool definition */
+/**
+ * OpenRouter web search server tool.
+ * Format per official docs: { type: 'openrouter:web_search' }
+ * NOT the function-type format — this is a server-side tool managed by OpenRouter.
+ */
 const WEB_SEARCH_TOOL: OpenRouterToolDef = {
-  type: 'function',
-  function: {
-    name: 'openrouter:web_search',
-    description: 'Search the web for real-time information',
-  },
+  type: 'openrouter:web_search',
 };
 
 const DEFAULT_SYSTEM_PROMPT = `Kamu adalah ARISA (Agricultural Resource & Intelligence System Assistant), asisten AI cerdas untuk pertanian Indonesia.
@@ -327,9 +328,25 @@ export class AiGatewayService {
       max_tokens: this.maxTokensCap,
       temperature: 0.3, // Lower temp for structured analysis
       response_format: { type: 'json_object' },
-      plugins: [{ id: 'response-healing' }], // Auto-repair broken JSON
+      plugins: [{ id: 'response-healing' }], // Auto-repair broken JSON (still active per OpenRouter docs)
       user: userId,
     };
+
+    // Apply reasoning if provided (B7 fix — AnalyzeDto.reasoning was defined but never used)
+    if (dto.reasoning) {
+      params.reasoning = {};
+      if (dto.reasoning.effort) params.reasoning.effort = dto.reasoning.effort;
+      if (dto.reasoning.maxTokens) params.reasoning.max_tokens = dto.reasoning.maxTokens;
+      if (dto.reasoning.exclude !== undefined) params.reasoning.exclude = dto.reasoning.exclude;
+    }
+
+    // Inject IoT context for analyze (D6 — deviceId exists on AnalyzeDto but was unused)
+    if (dto.deviceId && userId) {
+      const iotContext = await this.buildIotContext(userId, dto.deviceId);
+      if (iotContext) {
+        messages[0].content = `${messages[0].content}${iotContext}`;
+      }
+    }
 
     const startTime = Date.now();
     let response;
@@ -520,7 +537,7 @@ export class AiGatewayService {
       if (!summaries.length) return '';
 
       const contextLines = summaries.map((s, i) => {
-        const date = s.sessionEnd.toLocaleDateString('id-ID', {
+        const date = s.sessionEnd.toLocaleString('id-ID', {
           day: 'numeric', month: 'long', year: 'numeric',
           hour: '2-digit', minute: '2-digit',
         });
@@ -561,8 +578,8 @@ export class AiGatewayService {
         throw new HttpException(ErrorCode.RATE_LIMIT_EXCEEDED, HttpStatus.TOO_MANY_REQUESTS);
       }
 
-      // Increment with 60s expiry
-      const client = (this.redis as any).client;
+      // Increment with 60s expiry using proper accessor
+      const client = this.redis.getClient();
       if (client) {
         await client.multi().incr(key).expire(key, 60).exec();
         return;

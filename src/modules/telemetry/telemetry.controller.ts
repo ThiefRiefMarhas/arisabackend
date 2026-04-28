@@ -4,6 +4,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiSecurity, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { TelemetryService } from './telemetry.service';
+import { TelemetryPushDto } from './dto/telemetry-push.dto';
 import { DeviceAuthGuard } from '../../common/guards/device-auth.guard';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentDevice } from '../../common/decorators/current-device.decorator';
@@ -21,9 +22,9 @@ export class TelemetryController {
   @ApiOperation({ summary: 'Push telemetry data from device' })
   async push(
     @CurrentDevice('id') deviceId: string,
-    @Body() body: any,
+    @Body() dto: TelemetryPushDto,
   ) {
-    return this.telemetryService.push(deviceId, body);
+    return this.telemetryService.push(deviceId, dto);
   }
 
   @Get('device/:deviceId')

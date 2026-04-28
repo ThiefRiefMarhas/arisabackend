@@ -20,7 +20,14 @@ export class PrismaService
   constructor(private readonly configService: ConfigService) {
     const databaseUrl = configService.get<string>('database.url');
 
-    const pool = new Pool({ connectionString: databaseUrl });
+    // Prisma 7 uses pg Pool directly — configure timeouts explicitly
+    // (pg Pool defaults to 0 = no timeout, unlike Prisma 6's 5s default)
+    const pool = new Pool({
+      connectionString: databaseUrl,
+      connectionTimeoutMillis: 5000,  // 5s — fail fast if DB unreachable
+      idleTimeoutMillis: 30000,       // 30s — close idle connections
+      max: 10,                        // Max pool size
+    });
     const adapter = new PrismaPg(pool);
 
     super({ adapter });

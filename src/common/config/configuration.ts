@@ -36,8 +36,8 @@ export default () => ({
     defaultModel:
       process.env.OPENROUTER_DEFAULT_MODEL || 'google/gemini-2.5-flash',
     fallbackModel:
-      process.env.OPENROUTER_FALLBACK_MODEL || 'anthropic/claude-3.5-haiku',
-    maxTokens: parseInt(process.env.OPENROUTER_MAX_TOKENS ?? '4096', 10),
+      process.env.OPENROUTER_FALLBACK_MODEL || 'anthropic/claude-haiku-4.5',
+    maxTokens: parseInt(process.env.OPENROUTER_MAX_TOKENS ?? '8192', 10),
     timeoutMs: parseInt(process.env.OPENROUTER_TIMEOUT_MS ?? '30000', 10),
     userRateLimitPerMinute: parseInt(
       process.env.AI_USER_RATE_LIMIT_PER_MINUTE ?? '10',
@@ -47,6 +47,8 @@ export default () => ({
       process.env.AI_USER_RATE_LIMIT_PER_HOUR ?? '100',
       10,
     ),
+    appUrl: process.env.OPENROUTER_APP_URL || 'https://arisa.app',
+    appTitle: process.env.OPENROUTER_APP_TITLE || 'ARISA Smart Agriculture',
   },
 
   throttle: {
