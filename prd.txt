@@ -1,0 +1,906 @@
+# PRD — Cloud Backend ARISA
+
+## 1. Ringkasan Produk
+
+ARISA adalah sistem hybrid berbasis Raspberry Pi + aplikasi pengguna + cloud backend. Cloud backend menjadi pusat identitas, sinkronisasi, penyimpanan data utama, kontrol akses, log audit, notifikasi, dan integrasi AI cloud. Raspberry Pi berfungsi sebagai edge backend lokal yang tetap bisa melayani pengguna saat internet tidak tersedia, lalu melakukan sinkronisasi ke cloud ketika koneksi kembali tersedia.
+
+Dokumen ini mendefinisikan PRD lengkap untuk membangun cloud backend ARISA dari nol sampai siap produksi.
+
+---
+
+## 2. Latar Belakang dan Masalah yang Diselesaikan
+
+Sistem ARISA membutuhkan backend yang mampu menangani tiga kondisi utama:
+
+1. **Online–Online**: aplikasi dan Raspberry Pi sama-sama bisa terhubung ke cloud.
+2. **Offline–Online**: pengguna tidak punya internet, tetapi Raspberry Pi tetap bisa melayani secara lokal dan sync ke cloud nanti.
+3. **Offline–Offline**: pengguna dan jaringan publik tidak tersedia, tetapi device lokal masih bisa beroperasi berdasarkan credential yang sudah pernah di-bootstrap sebelumnya.
+
+Masalah utama yang harus diselesaikan cloud backend:
+
+* memastikan identitas user dan device tetap aman
+* menyimpan data utama secara terpusat
+* menangani sync dari data lokal yang tertunda
+* mencegah duplikasi dan konflik data
+* menyediakan API yang stabil untuk aplikasi dan Raspberry Pi
+* memantau kesehatan device dan sistem
+
+---
+
+## 3. Tujuan Produk
+
+### Tujuan Utama
+
+Membangun cloud backend yang:
+
+* menjadi sumber kebenaran utama untuk user, device, dan data
+* mendukung pairing perangkat Raspberry Pi ke akun user
+* menerima sinkronisasi data dari local backend
+* menyediakan API yang aman, terdokumentasi, dan scalable
+* mendukung AI cloud sebagai fallback / augmentasi dari AI lokal
+
+### Tujuan Operasional
+
+* menyediakan onboarding user dan device yang simpel
+* memungkinkan aplikasi ARISA beralih mulus antara cloud mode dan local mode
+* menjaga integritas data walaupun koneksi internet tidak stabil
+* menyediakan observability untuk audit, monitoring, dan debugging
+
+---
+
+## 4. Non-Tujuan (Non-Goals)
+
+Cloud backend ini **tidak** mencakup:
+
+* pengembangan model AI lokal di Raspberry Pi secara detail
+* desain UI/UX aplikasi mobile secara penuh
+* firmware rendah-level Raspberry Pi
+* produksi hardware enclosure, UPS, atau sistem pendingin
+* integrasi ke sistem pihak ketiga di luar kebutuhan inti ARISA
+
+---
+
+## 5. Prinsip Desain Produk
+
+1. **Cloud sebagai sumber kebenaran utama**.
+2. **Local backend sebagai edge buffer dan authority sementara**.
+3. **Offline harus tetap aman, tetapi tidak boleh menciptakan identitas baru secara liar**.
+4. **Semua data yang penting harus punya ID unik dan timestamp**.
+5. **Sync harus idempotent** agar pengiriman ulang tidak merusak data.
+6. **Security by default**: token, signing, audit log, dan revocation.
+7. **Observability first**: tidak boleh ada komponen yang buta.
+
+---
+
+## 6. Target Pengguna
+
+### 6.1 User Utama
+
+* petani / operator lapangan
+* admin perangkat
+* operator sistem ARISA
+
+### 6.2 Pengguna Sistem
+
+* aplikasi mobile/web ARISA
+* Raspberry Pi edge server
+* admin cloud backend
+* service AI cloud
+
+---
+
+## 7. Use Case Utama
+
+1. User mendaftar dan login ke ARISA.
+2. User melakukan pairing Raspberry Pi ke akun.
+3. Raspberry Pi mengirim telemetry ke cloud.
+4. Raspberry Pi menyimpan data lokal ketika internet putus.
+5. Cloud menerima sinkronisasi saat internet kembali.
+6. Cloud memproses data utama dan menyimpan hasil final.
+7. Cloud mengirim notifikasi status device atau hasil analisis.
+8. Admin dapat melihat status device, log, dan histori sync.
+
+---
+
+## 8. Arsitektur Sistem Tingkat Tinggi
+
+### Komponen
+
+* **Client App**: aplikasi pengguna ARISA.
+* **Cloud Backend**: pusat autentikasi, data, sync, dan AI gateway.
+* **Edge Backend (Raspberry Pi)**: server lokal, queue, cache, validasi lokal, local AI.
+* **Database Cloud**: penyimpanan utama.
+* **Object Storage**: penyimpanan file, gambar, hasil model, lampiran.
+* **Message Queue / Job Queue**: antrian job async.
+* **Monitoring Stack**: log, metrics, tracing.
+
+### Alur Besar
+
+* App login ke cloud.
+* User pairing device.
+* Device mendapat identitas dan trust.
+* Data mengalir ke local backend atau cloud tergantung kondisi.
+* Local backend menyimpan data saat offline.
+* Sync service mengirim data lokal ke cloud saat koneksi tersedia.
+
+---
+
+## 9. Ruang Lingkup Cloud Backend
+
+Cloud backend minimal harus menyediakan 8 domain besar:
+
+1. Authentication & Authorization
+2. Device Registration & Pairing
+3. Data Ingestion & Sync
+4. Core Data Storage
+5. AI Gateway
+6. Notification System
+7. Monitoring & Audit
+8. Admin & Management Tools
+
+---
+
+## 10. Functional Requirements
+
+### 10.1 Authentication & Authorization
+
+Cloud harus mendukung:
+
+* register user dengan email/password
+* login user
+* login Google/OAuth
+* refresh token
+* logout
+* revoke session
+* role-based access control
+
+#### Requirement detail
+
+* password disimpan dalam bentuk hash aman
+* access token berumur pendek
+* refresh token digunakan untuk memperpanjang sesi
+* session lama dapat dicabut dari server
+
+---
+
+### 10.2 Device Registration & Pairing
+
+Cloud harus mendukung:
+
+* register device baru
+* generate pairing code / QR
+* mengikat device ke user tertentu
+* revoke device
+* melihat daftar device milik user
+* mencatat last seen device
+
+#### Requirement detail
+
+* satu device memiliki identitas unik `device_id`
+* pairing hanya bisa dilakukan jika pairing token valid
+* pairing token memiliki masa berlaku
+* device dapat dipindahkan ke akun lain hanya jika dilepas secara sah
+
+---
+
+### 10.3 Data Ingestion
+
+Cloud harus mampu menerima data dari:
+
+* aplikasi pengguna
+* Raspberry Pi local backend
+* service internal
+
+#### Requirement detail
+
+* semua request data harus punya `request_id` / `event_id`
+* endpoint ingest harus idempotent
+* payload disimpan sebagai raw JSON dan normalized data bila perlu
+* sistem harus mendukung retry tanpa duplikasi
+
+---
+
+### 10.4 Sync Service
+
+Cloud harus mampu:
+
+* menerima data pending dari local backend
+* menyimpan status sync
+* mengembalikan acknowledgement
+* menangani konflik data
+* memproses data bertumpuk dari mode offline
+
+#### Requirement detail
+
+* data sync harus bisa batch upload
+* data yang gagal diproses masuk ke retry queue
+* status sinkronisasi minimal: `pending`, `processing`, `synced`, `failed`, `conflict`
+
+---
+
+### 10.5 AI Gateway
+
+Cloud harus menyediakan jalur untuk request AI berbasis cloud.
+
+Fungsi:
+
+* menerima request dari app atau device
+* meneruskan ke provider AI eksternal bila online
+* menyimpan metadata request dan response
+* menyiapkan fallback bila service unavailable
+
+#### Requirement detail
+
+* request AI harus diproteksi token
+* hasil AI disimpan sebagai riwayat jika diperlukan
+* sistem harus dapat menolak request bila quota / akses tidak memenuhi syarat
+
+---
+
+### 10.6 Notification System
+
+Cloud harus dapat mengirim notifikasi untuk:
+
+* device berhasil pairing
+* device offline terlalu lama
+* sync gagal
+* ada hasil analisis baru
+* quota menipis
+* ada perubahan status sistem
+
+#### Channel
+
+* in-app notification
+* push notification
+* email (opsional)
+
+---
+
+### 10.7 Monitoring, Logging, Audit
+
+Cloud harus mengumpulkan:
+
+* log API
+* event user
+* event device
+* telemetry device
+* error service
+* audit trail perubahan data penting
+
+#### Requirement detail
+
+* semua event penting dicatat
+* admin dapat melakukan pencarian log
+* log harus mengandung timestamp, actor, device_id, request_id
+
+---
+
+### 10.8 Admin Management
+
+Cloud harus menyediakan panel admin untuk:
+
+* melihat user
+* melihat device
+* melihat status sync
+* revoke device
+* inspect log
+* memonitor beban sistem
+* mengelola konfigurasi global
+
+---
+
+## 11. Non-Functional Requirements
+
+### 11.1 Security
+
+* TLS wajib untuk semua komunikasi
+* token harus signed dan diverifikasi
+* access control berbasis role dan ownership
+* endpoint sensitif harus rate limited
+* request dari device harus diverifikasi
+* data penting harus terenkripsi at-rest jika memungkinkan
+
+### 11.2 Reliability
+
+* service harus tahan retry
+* data tidak boleh hilang saat koneksi drop
+* sync harus idempotent
+* sistem harus meminimalkan single point of failure
+
+### 11.3 Scalability
+
+* arsitektur harus bisa dikembangkan dari monolith rapi ke modular services
+* database harus mendukung pertumbuhan user, device, dan event log
+* job queue harus memproses data secara async
+
+### 11.4 Performance
+
+* response auth dan device lookup harus cepat
+* sync batch harus efisien
+* query database harus dioptimalkan dengan index yang benar
+
+### 11.5 Maintainability
+
+* kode harus modular
+* API terdokumentasi
+* schema database versioned
+* migrasi terkontrol
+
+### 11.6 Observability
+
+* metrics, logs, tracing harus tersedia
+* health check endpoint harus ada
+* status service harus bisa dilihat admin
+
+---
+
+## 12. Desain Database Cloud
+
+### 12.1 Tipe Database yang Direkomendasikan
+
+* **Relational DB utama**: PostgreSQL
+* **Cache / session / queue ringan**: Redis
+* **Object storage**: untuk file, image, model output, lampiran
+
+### 12.2 Entitas Inti
+
+#### Users
+
+Menyimpan identitas akun.
+Field umum:
+
+* user_id
+* name
+* email
+* password_hash
+* oauth_provider
+* created_at
+* updated_at
+* last_login
+* role
+* status
+
+#### Devices
+
+Menyimpan identitas Raspberry Pi.
+Field umum:
+
+* device_id
+* device_name
+* owner_user_id
+* pairing_status
+* device_token_hash
+* last_seen
+* firmware_version
+* app_version
+* status
+* created_at
+* updated_at
+
+#### UserDevices / Ownership Relations
+
+Mengikat user dan device.
+Field umum:
+
+* relation_id
+* user_id
+* device_id
+* status
+* paired_at
+* revoked_at
+
+#### SyncJobs
+
+Menyimpan antrian data yang datang dari local backend.
+Field umum:
+
+* sync_job_id
+* device_id
+* user_id
+* request_id
+* payload_raw
+* payload_type
+* status
+* retry_count
+* error_message
+* created_at
+* updated_at
+
+#### CoreData / Domain Data
+
+Tempat data final bisnis ARISA.
+Field umum:
+
+* record_id
+* user_id
+* device_id
+* data_type
+* data_json
+* version
+* source
+* created_at
+* updated_at
+
+#### Telemetry
+
+Untuk status teknis perangkat.
+Field umum:
+
+* telemetry_id
+* device_id
+* cpu_temp
+* cpu_usage
+* ram_usage
+* disk_usage
+* uptime
+* network_status
+* battery_status
+* created_at
+
+#### AuditLogs
+
+Untuk histori perubahan.
+Field umum:
+
+* audit_id
+* actor_type
+* actor_id
+* action
+* target_type
+* target_id
+* metadata_json
+* created_at
+
+#### Notifications
+
+Untuk pesan ke user.
+Field umum:
+
+* notification_id
+* user_id
+* type
+* title
+* body
+* status
+* read_at
+* created_at
+
+### 12.3 Index yang Penting
+
+* `users.email`
+* `devices.device_id`
+* `devices.owner_user_id`
+* `sync_jobs.device_id + status`
+* `core_data.user_id + created_at`
+* `telemetry.device_id + created_at`
+* `audit_logs.target_id + created_at`
+
+---
+
+## 13. API Contract yang Diperlukan
+
+### 13.1 Auth API
+
+* `POST /auth/register`
+* `POST /auth/login`
+* `POST /auth/oauth/google`
+* `POST /auth/refresh`
+* `POST /auth/logout`
+* `POST /auth/revoke-all`
+
+### 13.2 Device API
+
+* `POST /devices/register`
+* `POST /devices/pair/start`
+* `POST /devices/pair/confirm`
+* `GET /devices`
+* `GET /devices/{device_id}`
+* `POST /devices/{device_id}/revoke`
+* `POST /devices/{device_id}/heartbeat`
+
+### 13.3 Sync API
+
+* `POST /sync/push`
+* `POST /sync/batch`
+* `GET /sync/status/{job_id}`
+* `POST /sync/ack`
+* `GET /sync/pull`
+
+### 13.4 Data API
+
+* `POST /data`
+* `GET /data`
+* `GET /data/{record_id}`
+* `PATCH /data/{record_id}`
+* `DELETE /data/{record_id}`
+
+### 13.5 AI API
+
+* `POST /ai/analyze`
+* `POST /ai/chat`
+* `GET /ai/history`
+
+### 13.6 Telemetry API
+
+* `POST /telemetry`
+* `GET /telemetry/device/{device_id}`
+
+### 13.7 Notification API
+
+* `GET /notifications`
+* `PATCH /notifications/{id}/read`
+
+### 13.8 Admin API
+
+* `GET /admin/users`
+* `GET /admin/devices`
+* `GET /admin/logs`
+* `GET /admin/sync-jobs`
+* `POST /admin/devices/{device_id}/disable`
+
+---
+
+## 14. Authorization Model
+
+Cloud backend harus membedakan beberapa level akses:
+
+### Roles
+
+* **Super Admin**: akses penuh
+* **Admin Operasional**: monitoring, revoke, support
+* **User**: akses data miliknya sendiri
+* **Device Service**: akses terbatas untuk device terdaftar
+
+### Prinsip
+
+* user hanya boleh melihat data miliknya
+* device hanya boleh mengirim data yang sesuai ownership
+* admin dapat melakukan override dengan audit lengkap
+
+---
+
+## 15. Pairing & Trust Model
+
+Cloud harus memegang otoritas untuk menentukan trust.
+
+### Flow pairing yang disarankan
+
+1. User login ke cloud.
+2. Device menampilkan QR dengan `device_id` + pairing token sementara.
+3. App memindai QR.
+4. App mengirim pairing request ke cloud.
+5. Cloud memverifikasi device token.
+6. Cloud mengikat device ke user.
+7. Cloud mengeluarkan credential/konfirmasi pairing.
+8. Device dan app menyimpan credential untuk mode offline berikutnya.
+
+### Prinsip penting
+
+* jangan bikin identitas baru secara lokal jika belum pernah bootstrap
+* offline hanya boleh reuse identity yang sudah disahkan cloud sebelumnya
+
+---
+
+## 16. Sync Strategy
+
+### 16.1 Prinsip Sync
+
+* local backend menyimpan data dulu
+* cloud menerima saat tersedia
+* setiap item sync punya ID unik
+* sync harus aman dari duplikasi
+* cloud bisa menolak data yang tidak valid
+
+### 16.2 Status Sync
+
+* `pending`
+* `queued`
+* `sending`
+* `synced`
+* `failed`
+* `conflict`
+
+### 16.3 Conflict Resolution
+
+Pilihan strategi:
+
+* **last write wins** untuk data sederhana
+* **version-based merge** untuk data yang lebih sensitif
+* **manual review** untuk kasus anomali
+
+### 16.4 Retry Strategy
+
+* retry otomatis jika gagal jaringan
+* backoff eksponensial
+* batas retry tertentu
+* payload tetap disimpan sebelum sukses
+
+---
+
+## 17. Data Model dan Payload Standar
+
+Semua payload dari local backend ke cloud idealnya memiliki format seragam:
+
+```json
+{
+  "request_id": "uuid",
+  "device_id": "ARISA-001",
+  "user_id": "USR-001",
+  "event_type": "scan_result",
+  "timestamp": "2026-04-20T10:00:00Z",
+  "version": 1,
+  "source": "edge",
+  "payload": {
+    "raw_json": {},
+    "processed": {},
+    "metadata": {}
+  }
+}
+```
+
+---
+
+## 18. Error Handling
+
+Cloud backend harus mendefinisikan error dengan jelas.
+
+### Contoh kategori
+
+* 400 Bad Request
+* 401 Unauthorized
+* 403 Forbidden
+* 404 Not Found
+* 409 Conflict
+* 422 Validation Error
+* 429 Rate Limited
+* 500 Internal Error
+* 503 Service Unavailable
+
+### Wajib
+
+* pesan error harus konsisten
+* error harus bisa dipetakan oleh app dan Raspberry Pi
+* error harus dicatat di log
+
+---
+
+## 19. Observability & Monitoring
+
+### Metrics yang harus dipantau
+
+* jumlah request per endpoint
+* latency rata-rata
+* error rate
+* jumlah sync job pending
+* jumlah device online/offline
+* CPU / memory service cloud
+* queue depth
+
+### Log yang harus ada
+
+* auth log
+* device pairing log
+* sync log
+* admin action log
+* AI request log
+* error log
+
+### Health Check
+
+* `GET /health`
+* `GET /ready`
+* `GET /metrics` bila diperlukan
+
+---
+
+## 20. Security Requirements
+
+### Wajib
+
+* TLS 1.2+ / 1.3
+* token signed
+* refresh token aman
+* device token ter-hash atau terenkripsi
+* rate limiting
+* request validation
+* audit log untuk action sensitif
+* revoke mechanism untuk user dan device
+
+### Tambahan yang disarankan
+
+* IP allowlist untuk admin panel
+* secret rotation
+* credential expiry untuk pairing code
+* anti replay protection pada request device
+
+---
+
+## 21. Availability & Reliability Target
+
+### Target minimum awal
+
+* uptime service inti: 99.5%+
+* data loss: 0 untuk data yang sudah masuk local queue dan belum sync
+* sync failure harus dapat dipulihkan
+* recovery setelah restart harus otomatis
+
+### Recovery target
+
+* service harus bisa bangkit otomatis setelah crash
+* queue tidak boleh hilang saat reboot
+* data penting harus aman walaupun server restart
+
+---
+
+## 22. Deployment Model
+
+Rekomendasi tahap awal:
+
+* **Monolith modular** di cloud
+* pisahkan folder/module berdasarkan domain
+* gunakan worker async untuk sync dan notifikasi
+* siapkan pipeline deployment bertahap
+
+Tahap lanjut:
+
+* pecah menjadi service terpisah bila beban meningkat
+
+---
+
+## 23. Tech Stack Rekomendasi
+
+### Cloud Backend
+
+* Node.js / NestJS atau Python / FastAPI
+* PostgreSQL
+* Redis
+* Object storage
+* Docker
+* Nginx / API gateway
+* Background worker
+* Monitoring stack
+
+### Alasan
+
+* mudah dikembangkan
+* cocok untuk API hybrid
+* mendukung modularisasi
+* mudah integrasi sync dan auth
+
+---
+
+## 24. Testing Strategy
+
+### Unit Test
+
+* auth logic
+* validation
+* sync deduplication
+* permission check
+
+### Integration Test
+
+* login flow
+* pairing flow
+* sync push/pull
+* revoke device
+* notification trigger
+
+### End-to-End Test
+
+* user login → pairing → data masuk → sync → data tampil
+* offline local → online sync → final data tampil
+
+### Load Test
+
+* request burst
+* sync batch besar
+* concurrent device connections
+
+### Failure Test
+
+* internet putus
+* cloud down
+* duplicate request
+* stale token
+
+---
+
+## 25. Acceptance Criteria
+
+Cloud backend dianggap siap tahap awal bila:
+
+* user bisa register dan login
+* device bisa dipairing ke user
+* device punya identitas unik dan bisa direvoke
+* data dari local backend bisa masuk ke cloud
+* sync berjalan aman walau ada retry
+* data tidak dobel saat request dikirim ulang
+* cloud menyimpan data utama secara konsisten
+* logging dan monitoring aktif
+* admin bisa melihat status user, device, dan sync job
+
+---
+
+## 26. Risiko Produk
+
+1. **Sync conflict** jika data berubah di local dan cloud bersamaan.
+2. **Token leakage** jika credential device tidak aman.
+3. **Data duplicate** jika idempotency tidak diterapkan.
+4. **Queue menumpuk** jika internet lama mati.
+5. **Cloud over-simplified** jika semua logic dipaksa masuk satu service.
+6. **Observability lemah** sehingga error sulit dilacak.
+
+---
+
+## 27. Mitigasi Risiko
+
+* gunakan UUID untuk semua event utama
+* buat idempotency key
+* simpan queue lokal sebelum kirim
+* pisahkan auth, device, sync, dan data layer
+* gunakan audit log dan monitoring
+* siapkan retry + backoff
+* desain revocation dan expiry dari awal
+
+---
+
+## 28. Milestone Implementasi
+
+### Fase 1 — Fondasi
+
+* auth service
+* user table
+* device table
+* pairing flow dasar
+* health check
+
+### Fase 2 — Data & Sync
+
+* sync push/pull
+* queue table
+* core data storage
+* telemetry awal
+
+### Fase 3 — Operasional
+
+* notifications
+* audit logs
+* admin panel
+* monitoring dashboard
+
+### Fase 4 — Scale & Hardening
+
+* rate limit
+* advanced security
+* worker async
+* conflict resolution
+* load test
+
+---
+
+## 29. Definition of Done
+
+Cloud backend dianggap selesai untuk versi pertama bila:
+
+* semua API utama tersedia
+* database inti aktif
+* pairing device berjalan
+* sync lokal ke cloud berhasil
+* error handling tersedia
+* monitoring dan log aktif
+* keamanan dasar diterapkan
+* sistem bisa dipakai end-to-end oleh user dan device
+
+---
+
+## 30. Penutup
+
+Cloud backend ARISA harus dibangun sebagai sistem hybrid yang tahan offline, aman, dan terstruktur. Kunci keberhasilan ada pada 4 hal:
+
+* identity management
+* device pairing
+* sync engine
+* observability
+
+Kalau empat ini kuat, seluruh sistem ARISA akan jauh lebih mudah dikembangkan dan jauh lebih aman untuk dipakai di lapangan.

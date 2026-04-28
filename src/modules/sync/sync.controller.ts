@@ -1,0 +1,82 @@
+import {
+  Controller,
+  Post,
+  Get,
+  Param,
+  Body,
+  Query,
+  UseGuards,
+  HttpCode,
+  HttpStatus,
+} from '@nestjs/common';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiSecurity,
+  ApiQuery,
+} from '@nestjs/swagger';
+import { SyncService } from './sync.service';
+import { SyncPushDto, SyncBatchDto, SyncAckDto } from './dto';
+import { DeviceAuthGuard } from '../../common/guards/device-auth.guard';
+import { CurrentDevice } from '../../common/decorators/current-device.decorator';
+
+@ApiTags('Sync')
+@Controller('sync')
+@UseGuards(DeviceAuthGuard)
+@ApiSecurity('device-token')
+export class SyncController {
+  constructor(private readonly syncService: SyncService) {}
+
+  @Post('push')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiOperation({ summary: 'Push single sync item from device' })
+  @ApiResponse({ status: 202, description: 'Job accepted for processing' })
+  async push(
+    @Body() dto: SyncPushDto,
+    @CurrentDevice('id') deviceId: string,
+  ) {
+    return this.syncService.push(dto, deviceId);
+  }
+
+  @Post('batch')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiOperation({ summary: 'Push batch of sync items (max 100)' })
+  @ApiResponse({ status: 202, description: 'Batch accepted' })
+  async batch(
+    @Body() dto: SyncBatchDto,
+    @CurrentDevice('id') deviceId: string,
+  ) {
+    return this.syncService.pushBatch(dto, deviceId);
+  }
+
+  @Get('status/:jobId')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Check sync job status' })
+  @ApiResponse({ status: 200, description: 'Job status returned' })
+  @ApiResponse({ status: 404, description: 'Job not found' })
+  async status(@Param('jobId') jobId: string) {
+    return this.syncService.getJobStatus(jobId);
+  }
+
+  @Post('ack')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Acknowledge synced items' })
+  @ApiResponse({ status: 200, description: 'Acknowledged count' })
+  async ack(@Body() dto: SyncAckDto) {
+    return this.syncService.acknowledge(dto);
+  }
+
+  @Get('pull')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Pull updates from cloud to device' })
+  @ApiQuery({ name: 'since', description: 'ISO 8601 timestamp', required: true })
+  @ApiQuery({ name: 'limit', description: 'Max items', required: false })
+  @ApiResponse({ status: 200, description: 'Items to sync' })
+  async pull(
+    @Query('since') since: string,
+    @Query('limit') limit?: number,
+  ) {
+    return this.syncService.pull(since, limit ? Number(limit) : 50);
+  }
+}

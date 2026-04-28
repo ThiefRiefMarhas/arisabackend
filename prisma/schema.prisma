@@ -1,0 +1,273 @@
+// prisma/schema.prisma
+
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider     = "prisma-client-js"
+  moduleFormat = "cjs"
+}
+
+// ===================== ENUMS =====================
+
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+  USER
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+enum DevicePairingStatus {
+  UNPAIRED
+  PAIRING
+  PAIRED
+  REVOKED
+}
+
+enum DeviceStatus {
+  ACTIVE
+  DISABLED
+  DECOMMISSIONED
+}
+
+enum SyncJobStatus {
+  PENDING
+  QUEUED
+  PROCESSING
+  SYNCED
+  FAILED
+  CONFLICT
+}
+
+enum NotificationStatus {
+  UNREAD
+  READ
+  ARCHIVED
+}
+
+// ===================== MODELS =====================
+
+/// User identity table. Each user maps to a Supabase Auth record via supabase_id.
+model User {
+  id          String     @id @default(uuid()) @db.Uuid
+  supabaseId  String     @unique @map("supabase_id")
+  email       String     @unique
+  name        String?
+  avatarUrl   String?    @map("avatar_url")
+  role        UserRole   @default(USER)
+  status      UserStatus @default(ACTIVE)
+  lastLoginAt DateTime?  @map("last_login_at")
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+
+  devices         UserDevice[]
+  syncJobs        SyncJob[]
+  coreData        CoreData[]
+  notifications   Notification[]
+  aiRequests      AiRequest[]
+  sessionSummaries SessionSummary[]
+
+  @@map("users")
+}
+
+/// Raspberry Pi device identity. Each device has a unique serial and hashed token.
+model Device {
+  id              String              @id @default(uuid()) @db.Uuid
+  deviceName      String              @map("device_name")
+  deviceSerial    String              @unique @map("device_serial")
+  tokenHash       String              @map("token_hash")
+  pairingStatus   DevicePairingStatus @default(UNPAIRED) @map("pairing_status")
+  pairingCode     String?             @map("pairing_code")
+  pairingExpiry   DateTime?           @map("pairing_expiry")
+  status          DeviceStatus        @default(ACTIVE)
+  firmwareVersion String?             @map("firmware_version")
+  appVersion      String?             @map("app_version")
+  lastSeenAt      DateTime?           @map("last_seen_at")
+  metadata        Json?
+  createdAt       DateTime            @default(now()) @map("created_at")
+  updatedAt       DateTime            @updatedAt @map("updated_at")
+
+  owners           UserDevice[]
+  syncJobs         SyncJob[]
+  coreData         CoreData[]
+  telemetry        Telemetry[]
+  sessionSummaries SessionSummary[]
+
+  @@map("devices")
+}
+
+/// Many-to-many relationship between users and devices.
+model UserDevice {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  deviceId  String    @map("device_id") @db.Uuid
+  isPrimary Boolean   @default(false) @map("is_primary")
+  pairedAt  DateTime  @default(now()) @map("paired_at")
+  revokedAt DateTime? @map("revoked_at")
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, deviceId])
+  @@map("user_devices")
+}
+
+/// Sync job queue. Each data item from the Pi creates a SyncJob.
+/// request_id is UNIQUE for idempotency — duplicate pushes are safe.
+model SyncJob {
+  id           String        @id @default(uuid()) @db.Uuid
+  requestId    String        @unique @map("request_id")
+  deviceId     String        @map("device_id") @db.Uuid
+  userId       String        @map("user_id") @db.Uuid
+  payloadType  String        @map("payload_type")
+  payloadRaw   Json          @map("payload_raw")
+  status       SyncJobStatus @default(PENDING)
+  retryCount   Int           @default(0) @map("retry_count")
+  maxRetries   Int           @default(5) @map("max_retries")
+  errorMessage String?       @map("error_message")
+  processedAt  DateTime?     @map("processed_at")
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+
+  device Device @relation(fields: [deviceId], references: [id])
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@index([deviceId, status])
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+  @@map("sync_jobs")
+}
+
+/// Core business data. This is the "source of truth" after sync processing.
+model CoreData {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  deviceId  String?  @map("device_id") @db.Uuid
+  dataType  String   @map("data_type")
+  dataJson  Json     @map("data_json")
+  version   Int      @default(1)
+  source    String   // "cloud" | "edge" | "app"
+  eventId   String?  @unique @map("event_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user   User    @relation(fields: [userId], references: [id])
+  device Device? @relation(fields: [deviceId], references: [id])
+
+  @@index([userId, dataType, createdAt])
+  @@index([deviceId, createdAt])
+  @@map("core_data")
+}
+
+/// Device telemetry (CPU, RAM, disk, etc). Append-only — never updated.
+model Telemetry {
+  id            String   @id @default(uuid()) @db.Uuid
+  deviceId      String   @map("device_id") @db.Uuid
+  cpuTemp       Float?   @map("cpu_temp")
+  cpuUsage      Float?   @map("cpu_usage")
+  ramUsage      Float?   @map("ram_usage")
+  diskUsage     Float?   @map("disk_usage")
+  uptime        Int?
+  networkStatus String?  @map("network_status")
+  batteryStatus String?  @map("battery_status")
+  metadata      Json?
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  device Device @relation(fields: [deviceId], references: [id])
+
+  @@index([deviceId, createdAt])
+  @@map("telemetry")
+}
+
+/// Audit log. Polymorphic actor — can be user, device, or system.
+/// No FK on actorId intentionally — actor can be any entity type.
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  actorType  String   @map("actor_type")
+  actorId    String   @map("actor_id")
+  action     String
+  targetType String?  @map("target_type")
+  targetId   String?  @map("target_id")
+  metadata   Json?
+  ipAddress  String?  @map("ip_address")
+  userAgent  String?  @map("user_agent")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([actorId, createdAt])
+  @@index([action, createdAt])
+  @@index([targetType, targetId, createdAt])
+  @@map("audit_logs")
+}
+
+/// In-app notifications for users.
+model Notification {
+  id        String             @id @default(uuid()) @db.Uuid
+  userId    String             @map("user_id") @db.Uuid
+  type      String
+  title     String
+  body      String
+  status    NotificationStatus @default(UNREAD)
+  metadata  Json?
+  readAt    DateTime?          @map("read_at")
+  createdAt DateTime           @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, status, createdAt])
+  @@map("notifications")
+}
+
+/// AI request log — tracks all AI interactions.
+model AiRequest {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String   @map("user_id") @db.Uuid
+  requestType  String   @map("request_type")
+  inputPayload Json     @map("input_payload")
+  outputResult Json?    @map("output_result")
+  provider     String
+  status       String
+  durationMs   Int?     @map("duration_ms")
+  tokenUsage   Json?    @map("token_usage")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+  @@map("ai_requests")
+}
+
+/// IoT session summary — Edge AI conclusions injected as cloud AI context.
+model SessionSummary {
+  id              String   @id @default(uuid()) @db.Uuid
+  deviceId        String   @map("device_id") @db.Uuid
+  userId          String   @map("user_id") @db.Uuid
+  sessionStart    DateTime @map("session_start")
+  sessionEnd      DateTime @map("session_end")
+
+  /// Narrative summary from Edge AI
+  summary         String   @db.Text
+  /// Aggregated metrics: { avgTemp, avgHumidity, soilMoisture, lightLevel, etc }
+  metrics         Json     @map("metrics")
+  /// Alert list: [{ type, severity, detail }]
+  alerts          Json?    @map("alerts")
+  /// Edge AI recommendations
+  recommendations Json?    @map("recommendations")
+
+  /// How many raw data points were in this session
+  dataPointCount  Int      @map("data_point_count")
+  syncedAt        DateTime @default(now()) @map("synced_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  device Device @relation(fields: [deviceId], references: [id])
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+  @@index([deviceId, sessionStart])
+  @@map("session_summaries")
+}
