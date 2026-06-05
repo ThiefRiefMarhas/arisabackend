@@ -19,13 +19,12 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 
-# Copy Prisma schema first for client generation
+# Copy Prisma schema and config first for client generation
 COPY prisma ./prisma
+COPY prisma.config.ts ./
 
-# Generate Prisma Client (needs DATABASE_URL at build time for schema parsing only)
-# We use a dummy URL — actual connection happens at runtime via env vars
-RUN DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy" \
-    npx prisma generate
+# Generate Prisma Client
+RUN npx prisma generate
 
 # Copy source code
 COPY tsconfig.json tsconfig.build.json nest-cli.json ./
@@ -50,6 +49,7 @@ COPY --from=build /app/dist ./dist
 
 # Copy Prisma schema + generated client from build stage
 COPY --from=build /app/prisma ./prisma
+COPY --from=build /app/prisma.config.ts ./
 COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=build /app/node_modules/@prisma/client ./node_modules/@prisma/client
 
