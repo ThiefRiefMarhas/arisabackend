@@ -1,6 +1,8 @@
 import { Module, NestModule, MiddlewareConsumer, RequestMethod } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 
+import { AppController } from './app.controller';
+
 // Config
 import configuration from './common/config/configuration';
 import { envValidationSchema } from './common/config/env.validation';
@@ -56,6 +58,7 @@ import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
     AiGatewayModule,
     AdminModule,
   ],
+  controllers: [AppController],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
