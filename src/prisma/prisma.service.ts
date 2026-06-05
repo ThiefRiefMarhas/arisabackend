@@ -22,11 +22,13 @@ export class PrismaService
 
     // Prisma 7 uses pg Pool directly — configure timeouts explicitly
     // (pg Pool defaults to 0 = no timeout, unlike Prisma 6's 5s default)
+    const isLocal = databaseUrl?.includes('localhost') || databaseUrl?.includes('127.0.0.1');
     const pool = new Pool({
       connectionString: databaseUrl,
       connectionTimeoutMillis: 5000,  // 5s — fail fast if DB unreachable
       idleTimeoutMillis: 30000,       // 30s — close idle connections
       max: 10,                        // Max pool size
+      ssl: isLocal ? undefined : { rejectUnauthorized: false }, // Required for Supabase/Cloud SQL
     });
     const adapter = new PrismaPg(pool);
 

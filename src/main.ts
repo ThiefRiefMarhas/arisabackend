@@ -95,13 +95,18 @@ async function bootstrap() {
   SwaggerModule.setup('api/docs', app, document);
 
   // ── Start ───────────────────────────────────────────────────
-  const port = process.env.PORT ?? 3000;
-  // Cloud Run requires listening on 0.0.0.0 (all interfaces)
-  await app.listen(port, '0.0.0.0');
-
-  console.log(`\n🚀 ARISA Cloud Backend running on port ${port}`);
-  console.log(`📚 Swagger docs: http://localhost:${port}/api/docs`);
-  console.log(`❤️  Health check: http://localhost:${port}/health\n`);
+  const port = parseInt(process.env.PORT || '8080', 10);
+  
+  try {
+    // Cloud Run requires listening on 0.0.0.0 (all interfaces)
+    await app.listen(port, '0.0.0.0');
+    console.log(`\n🚀 ARISA Cloud Backend running on port ${port}`);
+    console.log(`📚 Swagger docs: http://0.0.0.0:${port}/api/docs`);
+    console.log(`❤️  Health check: http://0.0.0.0:${port}/health\n`);
+  } catch (error) {
+    console.error('Failed to start application', error);
+    process.exit(1);
+  }
 }
 
 bootstrap();
