@@ -8,7 +8,7 @@ FROM node:20-alpine AS deps
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN npm ci --only=production --ignore-scripts && \
+RUN npm ci --only=production && \
     npm cache clean --force
 
 # ── Stage 2: Build application ──
@@ -17,7 +17,7 @@ WORKDIR /app
 
 # Copy all dependencies (dev + prod) for building
 COPY package.json package-lock.json ./
-RUN npm ci --ignore-scripts
+RUN npm ci
 
 # Copy Prisma schema first for client generation
 COPY prisma ./prisma
