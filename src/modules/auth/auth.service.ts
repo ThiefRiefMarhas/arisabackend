@@ -8,7 +8,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SupabaseService } from '../../supabase/supabase.service';
-import { RegisterDto, LoginDto, OAuthGoogleDto, RefreshTokenDto } from './dto';
+import { RegisterDto, LoginDto, OAuthGoogleDto, RefreshTokenDto, ForgotPasswordDto } from './dto';
 import { ErrorCode } from '../../common/constants/error-codes';
 
 @Injectable()
@@ -295,6 +295,37 @@ export class AuthService {
 
     return { message: 'All sessions revoked' };
   }
+
+  /**
+   * Send password reset email via Supabase.
+   */
+  async forgotPassword(dto: ForgotPasswordDto) {
+    const { email } = dto;
+    
+    // Optional: check if user exists in our DB first
+    const existing = await this.prisma.user.findUnique({
+      where: { email },
+    });
+    
+    // We can either throw an error if not found, or just return success (to prevent email enumeration).
+    // Let's just return success for security.
+    if (!existing) {
+      return { message: 'If your email is registered, a reset link will be sent.' };
+    }
+
+    const { error } = await this.supabase
+      .getClient()
+      .auth.resetPasswordForEmail(email);
+
+    if (error) {
+      this.logger.error(`Supabase resetPasswordForEmail failed: ${error.message}`);
+      throw new InternalServerErrorException(ErrorCode.SYSTEM_INTERNAL_ERROR);
+    }
+
+    this.logger.log(`Password reset email sent to: ${email}`);
+    return { message: 'If your email is registered, a reset link will be sent.' };
+  }
+
 
   /**
    * Strip sensitive fields from user object before returning.

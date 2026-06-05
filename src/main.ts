@@ -16,10 +16,10 @@ async function bootstrap() {
   app.use(helmet());
 
   // ── CORS ────────────────────────────────────────────────────
+  // Mobile apps (Flutter) don't send Origin headers like browsers,
+  // so we allow all origins. Swagger docs also need this.
   app.enableCors({
-    origin: process.env.NODE_ENV === 'production'
-      ? [/* Add production domains here */]
-      : true, // Allow all in development
+    origin: true, // Allow all origins (mobile app + Swagger)
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
     credentials: true,
   });
@@ -96,7 +96,8 @@ async function bootstrap() {
 
   // ── Start ───────────────────────────────────────────────────
   const port = process.env.PORT ?? 3000;
-  await app.listen(port);
+  // Cloud Run requires listening on 0.0.0.0 (all interfaces)
+  await app.listen(port, '0.0.0.0');
 
   console.log(`\n🚀 ARISA Cloud Backend running on port ${port}`);
   console.log(`📚 Swagger docs: http://localhost:${port}/api/docs`);
