@@ -34,7 +34,7 @@ export default () => ({
   openRouter: {
     apiKey: process.env.OPENROUTER_API_KEY,
     defaultModel:
-      process.env.OPENROUTER_DEFAULT_MODEL || 'google/gemini-2.5-flash',
+      process.env.OPENROUTER_DEFAULT_MODEL || 'google/gemini-3.5-flash',
     fallbackModel:
       process.env.OPENROUTER_FALLBACK_MODEL || 'anthropic/claude-haiku-4.5',
     maxTokens: parseInt(process.env.OPENROUTER_MAX_TOKENS ?? '8192', 10),

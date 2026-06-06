@@ -265,7 +265,7 @@ All environment variables and their validation rules:
 | `THROTTLE_LIMIT` | No | `100` | Max requests per window |
 | **OpenRouter AI** | | | |
 | `OPENROUTER_API_KEY` | ✅ Yes | — | OpenRouter API key |
-| `OPENROUTER_DEFAULT_MODEL` | No | `google/gemini-2.5-flash` | Primary AI model |
+| `OPENROUTER_DEFAULT_MODEL` | No | `google/gemini-3.5-flash` | Primary AI model |
 | `OPENROUTER_FALLBACK_MODEL` | No | `anthropic/claude-haiku-4.5` | Fallback when primary fails |
 | `OPENROUTER_MAX_TOKENS` | No | `8192` | Max response tokens |
 | `OPENROUTER_TIMEOUT_MS` | No | `30000` | Request timeout (ms) |
@@ -687,7 +687,7 @@ Authorization: Bearer eyJhbGciOi...
     { "role": "assistant", "content": "..." }
   ],
   "webSearch": true,
-  "model": "google/gemini-2.5-flash"
+  "model": "google/gemini-3.5-flash"
 }
 ```
 

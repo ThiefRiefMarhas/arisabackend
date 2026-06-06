@@ -34,7 +34,7 @@ export const envValidationSchema = Joi.object({
 
   // OpenRouter AI
   OPENROUTER_API_KEY: Joi.string().required(),
-  OPENROUTER_DEFAULT_MODEL: Joi.string().default('google/gemini-2.5-flash'),
+  OPENROUTER_DEFAULT_MODEL: Joi.string().default('google/gemini-3.5-flash'),
   OPENROUTER_FALLBACK_MODEL: Joi.string().default('anthropic/claude-haiku-4.5'),
   OPENROUTER_MAX_TOKENS: Joi.number().default(8192),
   OPENROUTER_TIMEOUT_MS: Joi.number().default(30000),

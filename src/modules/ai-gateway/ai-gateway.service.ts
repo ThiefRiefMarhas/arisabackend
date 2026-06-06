@@ -24,7 +24,7 @@ import { ErrorCode } from '../../common/constants/error-codes';
 // ─── Constants ───────────────────────────────────────────────
 
 const MODEL_MAP: Record<string, string> = {
-  'gemini-flash': 'google/gemini-2.5-flash',
+  'gemini-flash': 'google/gemini-3.5-flash',
   'claude-haiku': 'anthropic/claude-haiku-4.5',
 };
 
@@ -32,8 +32,8 @@ const MODEL_MAP: Record<string, string> = {
 const AVAILABLE_MODELS = [
   {
     alias: 'gemini-flash',
-    id: 'google/gemini-2.5-flash',
-    name: 'Gemini 2.5 Flash',
+    id: 'google/gemini-3.5-flash',
+    name: 'Gemini 3.5 Flash',
     provider: 'Google',
     contextWindow: 1_048_576,
     maxOutput: 65_535,
@@ -129,7 +129,7 @@ export class AiGatewayService {
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
   ) {
-    this.defaultModel = this.config.get<string>('openRouter.defaultModel', 'google/gemini-2.5-flash');
+    this.defaultModel = this.config.get<string>('openRouter.defaultModel', 'google/gemini-3.5-flash');
     this.fallbackModel = this.config.get<string>('openRouter.fallbackModel', 'anthropic/claude-haiku-4.5');
     this.maxTokensCap = this.config.get<number>('openRouter.maxTokens', 8192);
     this.rateLimitPerMin = this.config.get<number>('openRouter.userRateLimitPerMinute', 10);
