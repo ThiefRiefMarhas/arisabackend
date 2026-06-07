@@ -5,6 +5,7 @@ import {
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { AdminService } from './admin.service';
 import { AuditService } from '../audit/audit.service';
+import { NotificationService } from '../notification/notification.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -20,6 +21,7 @@ export class AdminController {
   constructor(
     private readonly adminService: AdminService,
     private readonly auditService: AuditService,
+    private readonly notificationService: NotificationService,
   ) {}
 
   @Get('dashboard')
@@ -88,5 +90,36 @@ export class AdminController {
     @CurrentUser('id') adminId: string,
   ) {
     return this.adminService.disableDevice(deviceId, adminId);
+  }
+
+  @Post('trigger-notification')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Trigger a push notification to a user' })
+  @ApiQuery({ name: 'userId', required: true })
+  @ApiQuery({ name: 'title', required: true })
+  @ApiQuery({ name: 'body', required: true })
+  @ApiQuery({ name: 'type', required: false, description: 'warning | weather | scan | system' })
+  async triggerNotification(
+    @Query('userId') userId: string,
+    @Query('title') title: string,
+    @Query('body') body: string,
+    @Query('type') type?: string,
+  ) {
+    // Save to DB
+    const notif = await this.notificationService.create({
+      userId,
+      title,
+      body,
+      type: type || 'system',
+    });
+    
+    // Future: Call Firebase Cloud Messaging (FCM) or WebSocket push here
+    // e.g., await this.fcmService.sendToUser(userId, { title, body, type });
+
+    return {
+      success: true,
+      message: 'Notification triggered successfully',
+      data: notif,
+    };
   }
 }

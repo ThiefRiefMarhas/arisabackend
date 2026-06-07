@@ -24,6 +24,7 @@ import { AuditModule } from './modules/audit/audit.module';
 import { NotificationModule } from './modules/notification/notification.module';
 import { AiGatewayModule } from './modules/ai-gateway/ai-gateway.module';
 import { AdminModule } from './modules/admin/admin.module';
+import { WeatherModule } from './modules/weather/weather.module';
 
 // Middleware
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
@@ -57,6 +58,7 @@ import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
     NotificationModule,
     AiGatewayModule,
     AdminModule,
+    WeatherModule,
   ],
   controllers: [AppController],
 })
