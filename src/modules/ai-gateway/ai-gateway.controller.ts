@@ -59,8 +59,15 @@ export class AiGatewayController {
 
     try {
       for await (const chunk of this.aiService.chatStream(userId, dto)) {
-        const content = chunk.choices?.[0]?.delta?.content;
+        const delta = chunk.choices?.[0]?.delta;
+        const content = delta?.content;
+        const reasoning = delta?.reasoning;
         const usage = chunk.usage;
+
+        // Send reasoning/thinking chunks (for thinking models)
+        if (reasoning) {
+          res.write(`data: ${JSON.stringify({ type: 'reasoning', content: reasoning })}\n\n`);
+        }
 
         // Send content chunks
         if (content) {

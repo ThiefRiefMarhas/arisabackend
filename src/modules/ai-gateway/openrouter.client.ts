@@ -269,6 +269,7 @@ export class OpenRouterClient {
           'Content-Type': 'application/json',
           'HTTP-Referer': this.appUrl,
           'X-OpenRouter-Title': this.appTitle,
+          'X-OpenRouter-Cache': 'true',
         },
         body: JSON.stringify(body),
         signal,
