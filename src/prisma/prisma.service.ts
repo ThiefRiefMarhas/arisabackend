@@ -41,8 +41,9 @@ export class PrismaService
       await this.$connect();
       this.logger.log('Database connection established');
     } catch (error) {
-      this.logger.error('Failed to connect to database', error);
-      throw error;
+      this.logger.error('Failed to connect to database on startup. Will reconnect on demand.', error.message || error);
+      // DO NOT throw error here, otherwise Cloud Run container will crash
+      // before it can bind to the PORT.
     }
   }
 
