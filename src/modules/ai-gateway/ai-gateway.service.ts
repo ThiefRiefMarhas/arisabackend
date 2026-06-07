@@ -347,7 +347,6 @@ export class AiGatewayService {
       max_tokens: this.maxTokensCap,
       temperature: 0.3, // Lower temp for structured analysis
       response_format: { type: 'json_object' },
-      plugins: [{ id: 'response-healing' }], // Auto-repair broken JSON (still active per OpenRouter docs)
       user: userId,
     };
 
