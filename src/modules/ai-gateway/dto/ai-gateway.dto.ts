@@ -74,10 +74,10 @@ export class ChatDto {
   @MaxLength(32000)
   message: string;
 
-  @ApiPropertyOptional({ enum: ['gemini-flash', 'claude-haiku'], default: 'gemini-flash' })
+  @ApiPropertyOptional({ enum: ['gemini-flash', 'gemini-pro', 'claude-haiku'], default: 'gemini-flash' })
   @IsOptional()
-  @IsIn(['gemini-flash', 'claude-haiku'])
-  model?: 'gemini-flash' | 'claude-haiku';
+  @IsIn(['gemini-flash', 'gemini-pro', 'claude-haiku'])
+  model?: 'gemini-flash' | 'gemini-pro' | 'claude-haiku';
 
   @ApiPropertyOptional({ description: 'Previous messages for multi-turn context' })
   @IsOptional()
@@ -182,10 +182,10 @@ export class AnalyzeDto {
   @ArrayMaxSize(5)
   images?: ImageInputDto[];
 
-  @ApiPropertyOptional({ enum: ['gemini-flash', 'claude-haiku'] })
+  @ApiPropertyOptional({ enum: ['gemini-flash', 'gemini-pro', 'claude-haiku'] })
   @IsOptional()
-  @IsIn(['gemini-flash', 'claude-haiku'])
-  model?: 'gemini-flash' | 'claude-haiku';
+  @IsIn(['gemini-flash', 'gemini-pro', 'claude-haiku'])
+  model?: 'gemini-flash' | 'gemini-pro' | 'claude-haiku';
 
   @ApiPropertyOptional({ description: 'Additional instructions' })
   @IsOptional()

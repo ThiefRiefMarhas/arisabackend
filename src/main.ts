@@ -3,6 +3,7 @@ import { AppModule } from './app.module';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { ValidationPipe, RequestMethod } from '@nestjs/common';
 import helmet from 'helmet';
+import { json, urlencoded } from 'express';
 
 // Global filters & interceptors
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
@@ -11,6 +12,10 @@ import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  // ── Body Parser Limits ──────────────────────────────────────
+  app.use(json({ limit: '50mb' }));
+  app.use(urlencoded({ limit: '50mb', extended: true }));
 
   // ── Security ────────────────────────────────────────────────
   app.use(helmet());
