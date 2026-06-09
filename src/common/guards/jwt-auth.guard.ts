@@ -9,6 +9,7 @@ import {
 import { Reflector } from '@nestjs/core';
 import { SupabaseService } from '../../supabase/supabase.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { RedisService } from '../../redis/redis.service';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 import { ErrorCode } from '../constants/error-codes';
 
@@ -24,6 +25,7 @@ export class JwtAuthGuard implements CanActivate {
     private readonly reflector: Reflector,
     private readonly supabaseService: SupabaseService,
     private readonly prismaService: PrismaService,
+    private readonly redisService: RedisService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -44,19 +46,31 @@ export class JwtAuthGuard implements CanActivate {
     const token = authHeader.split(' ')[1];
 
     try {
-      // Verify token via Supabase — this also checks session validity
-      const {
-        data: { user },
-        error,
-      } = await this.supabaseService.getClient().auth.getUser(token);
+      // Check cache first to avoid Supabase rate limits on concurrent requests
+      const cacheKey = `auth_user:${token}`;
+      let cachedUserId = await this.redisService.get(cacheKey);
 
-      if (error || !user) {
-        throw new UnauthorizedException(ErrorCode.AUTH_TOKEN_INVALID);
+      let authUserId = cachedUserId;
+
+      if (!authUserId) {
+        // Verify token via Supabase — this also checks session validity
+        const {
+          data: { user },
+          error,
+        } = await this.supabaseService.getClient().auth.getUser(token);
+
+        if (error || !user) {
+          throw new UnauthorizedException(ErrorCode.AUTH_TOKEN_INVALID);
+        }
+        
+        authUserId = user.id;
+        // Cache the valid token for 5 minutes to handle concurrent bursts
+        await this.redisService.set(cacheKey, authUserId, 300);
       }
 
       // Get our internal user record
       const dbUser = await this.prismaService.user.findUnique({
-        where: { supabaseId: user.id },
+        where: { supabaseId: authUserId },
       });
 
       if (!dbUser) {

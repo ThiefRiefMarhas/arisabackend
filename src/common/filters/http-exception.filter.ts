@@ -35,11 +35,16 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
       if (typeof exceptionResponse === 'string') {
         message = exceptionResponse;
-        errorCode = this.statusToErrorCode(statusCode);
+        // Check if the string matches a known ErrorCode
+        if (Object.values(ErrorCode).includes(exceptionResponse as ErrorCode)) {
+          errorCode = exceptionResponse;
+        } else {
+          errorCode = this.statusToErrorCode(statusCode);
+        }
       } else if (typeof exceptionResponse === 'object') {
         const resp = exceptionResponse as Record<string, any>;
         message = resp.message || exception.message;
-        errorCode = resp.error || this.statusToErrorCode(statusCode);
+        errorCode = resp.error || resp.code || this.statusToErrorCode(statusCode);
 
         // Handle class-validator array messages
         if (Array.isArray(message)) {

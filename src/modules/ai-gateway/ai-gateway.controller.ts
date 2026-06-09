@@ -57,26 +57,42 @@ export class AiGatewayController {
     res.setHeader('X-Accel-Buffering', 'no');
     res.flushHeaders();
 
+    // Helper: flush after every SSE write to prevent Express/proxy buffering
+    const sseWrite = (data: string) => {
+      res.write(data);
+      if (typeof (res as any).flush === 'function') (res as any).flush();
+    };
+
     try {
       for await (const chunk of this.aiService.chatStream(userId, dto)) {
         const delta = chunk.choices?.[0]?.delta;
         const content = delta?.content;
         const reasoning = delta?.reasoning;
+        const reasoningDetails = (delta as any)?.reasoning_details;
         const usage = chunk.usage;
 
-        // Send reasoning/thinking chunks (for thinking models)
+        // Send reasoning/thinking chunks (for thinking models — legacy field)
         if (reasoning) {
-          res.write(`data: ${JSON.stringify({ type: 'reasoning', content: reasoning })}\n\n`);
+          sseWrite(`data: ${JSON.stringify({ type: 'reasoning', content: reasoning })}\n\n`);
+        }
+
+        // Send reasoning_details array (newer OpenRouter models like Gemini 2.5/3.5)
+        if (reasoningDetails?.length) {
+          for (const detail of reasoningDetails) {
+            if (detail.text) {
+              sseWrite(`data: ${JSON.stringify({ type: 'reasoning', content: detail.text })}\n\n`);
+            }
+          }
         }
 
         // Send content chunks
         if (content) {
-          res.write(`data: ${JSON.stringify({ type: 'content', content })}\n\n`);
+          sseWrite(`data: ${JSON.stringify({ type: 'content', content })}\n\n`);
         }
 
         // Send final usage stats
         if (usage) {
-          res.write(
+          sseWrite(
             `data: ${JSON.stringify({
               type: 'usage',
               usage: {
@@ -90,9 +106,9 @@ export class AiGatewayController {
         }
       }
 
-      res.write('data: [DONE]\n\n');
+      sseWrite('data: [DONE]\n\n');
     } catch (error: any) {
-      res.write(
+      sseWrite(
         `data: ${JSON.stringify({
           type: 'error',
           error: error.message || 'Stream error',

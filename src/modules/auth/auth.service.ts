@@ -226,23 +226,31 @@ export class AuthService {
 
   /**
    * Logout — invalidate current session.
-   *
-   * NOTE: Supabase JS v2 does NOT have auth.admin.signOut().
-   * We use the standard auth.signOut() which works with the user's JWT.
+   * Reuses the existing SupabaseService client instead of creating a new one per call.
    */
   async logout(accessToken: string) {
     try {
-      // Use config to get Supabase credentials (SupabaseClient properties are protected)
-      const { createClient } = await import('@supabase/supabase-js');
       const supabaseUrl = this.config.get<string>('supabase.url', '');
       const supabaseAnonKey = this.config.get<string>('supabase.anonKey', '');
 
-      const userClient = createClient(supabaseUrl, supabaseAnonKey, {
-        global: { headers: { Authorization: `Bearer ${accessToken}` } },
+      if (!supabaseUrl || !supabaseAnonKey) {
+        this.logger.warn('Supabase not configured, skipping server logout');
+        return { message: 'Logged out successfully' };
+      }
+
+      // Call GoTrue REST API directly to sign out — avoids creating a new client
+      const response = await fetch(`${supabaseUrl}/auth/v1/logout`, {
+        method: 'POST',
+        headers: {
+          apikey: supabaseAnonKey,
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ scope: 'local' }),
       });
-      const { error } = await userClient.auth.signOut({ scope: 'local' });
-      if (error) {
-        this.logger.warn(`Logout failed: ${error.message}`);
+
+      if (!response.ok) {
+        this.logger.warn(`Server logout returned HTTP ${response.status} (best-effort)`);
       }
     } catch (error) {
       // Best-effort — don't crash on logout failure
@@ -255,8 +263,7 @@ export class AuthService {
   /**
    * Revoke all sessions for the current user.
    *
-   * Uses Supabase Auth Admin REST API directly since
-   * supabase-js v2 does not expose admin.signOut().
+   * Calls the Supabase GoTrue Admin REST API to delete all active sessions.
    */
   async revokeAll(userId: string) {
     const user = await this.prisma.user.findUnique({
@@ -268,12 +275,17 @@ export class AuthService {
     }
 
     try {
-      // Use config to get credentials (protected properties can't be accessed)
       const supabaseUrl = this.config.get<string>('supabase.url', '');
       const serviceKey = this.config.get<string>('supabase.serviceRoleKey', '');
 
+      if (!supabaseUrl || !serviceKey) {
+        this.logger.warn('Supabase admin credentials not configured');
+        return { message: 'All sessions revoked' };
+      }
+
+      // Delete all active sessions for this user via GoTrue Admin API
       const response = await fetch(
-        `${supabaseUrl}/auth/v1/admin/users/${user.supabaseId}/factors`,
+        `${supabaseUrl}/auth/v1/admin/users/${user.supabaseId}/sessions`,
         {
           method: 'DELETE',
           headers: {
@@ -285,7 +297,7 @@ export class AuthService {
       );
 
       if (!response.ok) {
-        this.logger.warn(`Revoke all failed: HTTP ${response.status}`);
+        this.logger.warn(`Revoke all sessions failed: HTTP ${response.status}`);
       }
     } catch (error) {
       this.logger.warn(`Revoke all error: ${(error as Error).message}`);

@@ -586,6 +586,19 @@ export class AiGatewayService {
   }
 
   private buildImagePart(img: ImageInputDto): ContentPart {
+    const isPdf = img.mimeType === 'application/pdf';
+    
+    if (isPdf) {
+      const fileData = img.type === 'base64'
+        ? `data:application/pdf;base64,${img.data}`
+        : img.data;
+
+      return {
+        type: 'file',
+        file: { filename: 'document.pdf', file_data: fileData },
+      };
+    }
+
     const url =
       img.type === 'base64'
         ? `data:${img.mimeType || 'image/jpeg'};base64,${img.data}`

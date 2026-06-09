@@ -35,6 +35,13 @@ export class TransformInterceptor<T>
     context: ExecutionContext,
     next: CallHandler,
   ): Observable<ApiResponse<T>> {
+    const response = context.switchToHttp().getResponse();
+
+    // Skip transformation for SSE/streaming responses where headers are already sent
+    if (response.headersSent) {
+      return next.handle();
+    }
+
     const request = context.switchToHttp().getRequest<Request>();
 
     return next.handle().pipe(

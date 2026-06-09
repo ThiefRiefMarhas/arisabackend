@@ -11,9 +11,10 @@ export interface OpenRouterMessage {
 }
 
 export interface ContentPart {
-  type: 'text' | 'image_url';
+  type: 'text' | 'image_url' | 'file';
   text?: string;
   image_url?: { url: string; detail?: string };
+  file?: { filename: string; file_data: string };
 }
 
 export interface OpenRouterRequest {
@@ -126,7 +127,7 @@ export class OpenRouterClient {
 
   constructor(private readonly config: ConfigService) {
     this.apiKey = this.config.get<string>('openRouter.apiKey', '');
-    this.timeoutMs = this.config.get<number>('openRouter.timeoutMs', 30000);
+    this.timeoutMs = this.config.get<number>('openRouter.timeoutMs', 120000); // 2 min for thinking models
     this.appUrl = this.config.get<string>('openRouter.appUrl', 'https://arisa.app');
     this.appTitle = this.config.get<string>('openRouter.appTitle', 'ARISA Smart Agriculture');
   }
